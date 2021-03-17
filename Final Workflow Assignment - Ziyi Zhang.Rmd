@@ -2,8 +2,12 @@
 title: "Final Workflow Assignment"
 author: "Ziyi Zhang"
 date: "3/16/2021"
-output: pdf_document
- 
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
@@ -87,7 +91,7 @@ Data_entry_3 <- rexcel("Data entry_Karlee.xlsx", F)
 F_scores <- rexcel("Index with F score.xlsx", T)
 ```
 
-## clean IV data
+## Clean IV data
 The order to run this project is cleaning IV data, cleaning DV data, integrating
 IV and DV data, then visualizing all of them
 ### Delete useless data 
