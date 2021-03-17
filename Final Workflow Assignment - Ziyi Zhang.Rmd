@@ -1,0 +1,344 @@
+---
+title: "Final Workflow Assignment"
+author: "Ziyi Zhang"
+date: "3/16/2021"
+output: html_document
+  toc: true
+  toc_float: true
+  code_folding: hide
+  theme: united
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Brief Introduction of Project
+## Introduction and Data Collection of IV
+The aim of my project is to find whether the organizational mindset can predict 
+company-level unethical behaviors. In my project, the IV is the *organizational mindsets* of a company. Mindset is a concept comes from Carol Dweck, and she identified
+two different mindsets, *fixed mindset or growth mindset*. Organizational mindset
+is a application of this individual definition on organizations. It is like organizational
+culture, we can also identify different organizational mindsets between fixed and growth.
+
+By calculating this, we collected letters to shareholders of Fortune 500 companies 
+and let 3 trained RAs to code those letters by one Likert scale with 8 items. 
+So we have three data-entry files created by three RAs and each of them has 8 
+columns indicating different items in Likert scale and 160 rows indicating different companies. 
+
+## Introduction and Data Collection of DV
+In my project, the DV is the *company-levels unethical behavior*. More specifically,
+we use companies *accounting misstatements* as a proxy. Understanding why misstatements 
+happen and how to detect misstatements are important to the capital market.
+
+We employ measure of financial reporting misstatements as the dependent variable. 
+Specifically, we use the *F-score* developed by Dechow et al. (2011) to predict 
+material misstatements. F-score represents the likelihood of manipulation, which 
+means a higher F-score indicates a higher probability of company’s manipulation 
+on its financial reports. To calculate our dependent variable, we collected the 
+financial statements of Fortune 500 from mergentonline.com website and calculated 
+their F-scores based on Dechow's F-score formula.
+
+# Building Code
+## Install packages
+
+Before writing the code, we need to install required packages and library all 
+of them. I used here, vroom, tidyverse, and readxl in my code, and I will run them now.
+
+```{r include = FALSE, warning = FALSE}
+install.packages("here")
+install.packages("vroom")
+install.packages("tidyverse")
+install.packages("readxl")
+
+library(tidyverse)
+library(here)
+library(vroom)
+library(readxl)
+
+```
+
+## Read IV and DV files
+### Create a function to increase efficiency and reproducibility
+
+To read all my dataset, first I created a function to read my data with or 
+without column names. The IV files don't have column names, but the DV file do
+has column names. It is messy if I typed `r col_name = T` or `r col_name = F`
+everytime. So I created a function with two inputs, the first is file name, and 
+the second is whether there is a column name or not, which should be a logical
+input. I think this step increases the efficiency, and it also increases the
+reproducibility becasue I could use this function again in the future.
+
+```{r}
+rexcel <- function (x, y){
+  stopifnot("ERROR: the second input should be logical" = is.logical(y))
+  library(readxl)
+  read_excel(x, col_name = y)
+}
+```
+
+Then I used this function to import all datasets.
+
+```{r include = FALSE}
+Data_entry_1 <- rexcel("Data entry_Becca.xlsx", F)
+Data_entry_2 <- rexcel("Data entry_Devon.xlsx", F)
+Data_entry_3 <- rexcel("Data entry_Karlee.xlsx", F)
+F_scores <- rexcel("Index with F score.xlsx", T)
+```
+
+## clean IV data
+The order to run this project is cleaning IV data, cleaning DV data, integrating
+IV and DV data, then visualizing all of them
+### Delete useless data 
+The first thing I did is very simple, becasue we don't need the last three survey
+items anymore (they have very low reliabilities in pilot test), I simply took
+off last three columns of the first data entry file, which is the only one with
+those three columns.
+
+```{r}
+Data_entry_1 <- Data_entry_1 %>% select(1:9)
+```
+
+### Rename colunms 
+Then the second thing I did is renaming all IV files becasue they didn't have 
+column names before. For this part, I have tried to create a file list with file 
+names and then make a for loop. But when I used `r list.files`, r always didn't
+give me anything back, so finally I used a messy way to rename.
+
+```{r}
+Data_entry_1 <- Data_entry_1 %>% rename(Company_Name = '...1', Q1 = '...2', Q2 = '...3', Q3 = '...4', Q4 = '...5', 
+                        Q5 = '...6', Q6 = '...7', Q7 = '...8', Q8 = '...9')
+Data_entry_2 <- Data_entry_2 %>% rename(Company_Name = '...1', Q1 = '...2', Q2 = '...3', Q3 = '...4', Q4 = '...5', 
+                                        Q5 = '...6', Q6 = '...7', Q7 = '...8', Q8 = '...9')
+Data_entry_3 <- Data_entry_3 %>% rename(Company_Name = '...1', Q1 = '...2', Q2 = '...3', Q3 = '...4', Q4 = '...5', 
+                                        Q5 = '...6', Q6 = '...7', Q7 = '...8', Q8 = '...9')
+```
+
+### Integrate all three IV files and Add the coder column to identify different coders
+
+If I would like to integrate all IV data into one whole file, different coders 
+can be integrated in one column, for example, called “Coder”, so that would be 
+easier to calculate the inter-coder agreement by grouping by different coders. 
+So I added a Coder column to each file and then make it like the tidying format
+standards we talked before. In the evaluations file, different rows indicating 
+different firms and different columns indicating different variables, 
+including coders and eight survey items. 
+
+```{r}
+Coder_1 <- 1
+Coder_2 <- 2
+Coder_3 <- 3
+
+Data_entry_1 <- Data_entry_1 %>% add_column(Coder = Coder_1, .before = "Q1")
+Data_entry_2 <- Data_entry_2 %>% add_column(Coder = Coder_2, .before = "Q1")
+Data_entry_3 <- Data_entry_3 %>% add_column(Coder = Coder_3, .before = "Q1")
+
+Evaluations <- bind_rows(Data_entry_1, Data_entry_2, Data_entry_3)
+```
+
+
+### Add a rank column to IV file and Take off rows end with a or b, just keep 2017's letters
+
+In the first column of my IV file, a, b, and c refer to letters from different 
+years, they are 2015, 2016 and 2017, respectively. But in week 1’s pilot coding 
+work, we coded all three years letters from 2015 to 2017, but after week 1, we
+decided to just keep 2017's data. Response to Jake's question, that is becasue 
+we didn't have enough RAs to code three years in the meantime. But if we just looked
+at one year, we can finish coding using one quarter. That's why we just have 2017's
+data in the first place, but we will definitly use three years in the future. The 
+2015 and 2016 data, however, currently are not helpful to the working dataset.
+
+So I decided to separate the first column by rank and year, and then drop those
+letters which are not in 2017.
+
+```{r}
+Evaluations_cleaned <- Evaluations %>% separate(Company_Name, sep = "_", into = c("Rank","Year")) %>% 
+  mutate(Year = ifelse(Year == "c", 2017, NA)) %>%
+  filter(!is.na(Year))
+```
+
+### Reverse 1,3,4,6,8 items and then Create a mean score at the end of columns
+Untile now, we got our IV data in a cleaned format, so I called it Evaluations_cleaned.
+Then, we need to transform some items in the survey becasue some of statements are
+formed in a reversal way. So the scores of those items should be reversed.
+
+To do this, I also created a customized function with two inputs. The first input
+is the data that we want to reverse, and the second input indicates the scale range
+we used, becasue different scale range will affect how we reverse the scores. 
+Although I used 1 to 6 scale range in my current project, I don't want to make it fixed.
+Making scale range as an input can make this function useful in the future if I
+had more surveys with different scales. For example, my another project used scale 
+range from 1 to 7 and from 1 to 4.
+
+Function is shown here.
+ 
+```{r}
+reverse <- function(a, scale_range){
+  stopifnot("ERROR: the scale range should be numeric" = is.numeric(scale_range))
+
+    limit <- scale_range + 1
+    a <- limit - a
+
+}
+```
+
+Once run this function to those columns need to be reversed, I added a column called
+INB indicating the mean score of implicit beliefs evaluating by eight items from
+the implicit belief survey.
+
+```{r}
+Evaluations_cleaned <- Evaluations_cleaned %>% mutate(Q1 = reverse(Q1, 6), Q3 = reverse(Q3, 6), Q4 = reverse(Q4, 6), 
+                               Q6 = reverse(Q6, 6), Q8 = reverse(Q8, 6),)
+
+INB <- Evaluations_cleaned %>% select(Q1:Q8) %>% rowMeans()
+Evaluations_cleaned <- Evaluations_cleaned %>% add_column(INB = INB, .after = "Q8")
+```
+
+
+### Final IV file: implicit belief data
+Then I just kept the Rank, Coder, and INB columns to make my dataset clearer.
+At that time, I found that if I used a wider format, it would be easier to 
+compare the scores between different Coders and also calculate the mean score 
+among coders.
+
+So, I changed my dataset to a wider format and calculated means among coders, 
+and then sort all my data by the rank of companies.
+
+```{r}
+INB_Data <- Evaluations_cleaned %>% select(Rank, Coder, INB)
+INB_Data <- INB_Data %>% pivot_wider(names_from = "Coder", values_from = "INB")
+Mean_INB <- INB_Data %>% select(-Rank) %>% rowMeans(na.rm = T)
+INB_Data <- INB_Data %>% add_column(Mean_INB = Mean_INB, .after = "Rank") %>% select(Rank, Mean_INB)
+
+
+INB_Data <- INB_Data %>% transform(Rank = as.numeric(Rank), 
+          Mean_INB = as.numeric(Mean_INB))
+
+
+INB_Data <- INB_Data [order( INB_Data[,1] ),]
+```
+
+
+## Clean DV data
+
+There is no much thing to do with the DV file, because we downloaded the financial
+reports of all companies from mergentonline.com website, and then did math based 
+on the equations provided by Dechow 2011. This data is more like an archival dataset,
+except for the F-scores in different years, which we are calculated by inserting
+the formula in excel. And we will update this dataset every time we get the financial
+reports of a new year.
+
+What I did with my DV file are just I kept the rank and 2018 F scores, and ordered
+them still by the rank. Why 2018 F scores? Becasue we want to know whether the 
+organizational mindset could **predict** the unethical behavior, so the IV is from
+2017 and the DV is from 2018.
+
+```{r}
+F_scores <- F_scores %>% select(`2017 Rank`, `2018 F`) 
+F_scores <- F_scores [order( F_scores[,1] ),]
+```
+
+
+## Integrate IV and DV files in one large file 
+
+Then I integrated IV and DV by using `r left_join` function, in order to make it
+easier to plot or run regression in the future.
+
+Becasue the F scores are from Fortune 1000 but INB scores are only coded in 
+Fortune 500. `r left_join` function is pretty useful because it could automatically
+help you combine two dataset based on the same **Rank** column.
+
+```{r}
+F_scores <- F_scores %>% rename(Rank = '2017 Rank')
+Compiled_Data <- left_join(INB_Data,F_scores)
+Compiled_Data <- Compiled_Data %>% drop_na()
+```
+
+## Plotting
+### Create boxplots for both two variables to see whether there is any outlier
+
+Once we get our data, it is very important to see whether there is any outlier.
+But going through all the data is time-consuming, so I plotted them by boxplot, 
+which is pretty easy for us to spot outliers.
+
+Box plot for IV data.
+```{r}
+Compiled_Data %>% ggplot(aes(x = Rank, colour = "smooth", y = Mean_INB)) + 
+  geom_boxplot() + 
+  ylim(0, 6)
+```
+
+Box plot for DV data.
+```{r}
+Compiled_Data %>% ggplot(aes(x = Rank, colour = "smooth", y = `2018 F`)) + 
+  geom_hline(yintercept = 10) + 
+  geom_boxplot()
+```
+
+### Remove outliers
+
+Based on the above step, we can see there is an outlier in 2018 F, and it reached
+more than 200, where as others are lower than 10. So we removed this outlier.
+
+```{r}
+Compiled_Data <- Compiled_Data %>% mutate(`2018 F` = ifelse(`2018 F` > 100, NA, `2018 F`)) %>% drop_na()
+```
+
+### Create scatter plot with two variables
+
+The final step of my current project is creating a scatter plot with two variables
+to see whether there is any relationship.
+
+```{r}
+Compiled_Data %>% ggplot(aes(x = Mean_INB, y = `2018 F`)) + geom_point()
+```
+
+# Conclusion
+
+The above are all codes and analysis I current have. I think overall using R 
+definitely increases the fidelity of my data analysis. Becasue at the past, when
+I used those windows listings and copying/pasting, human errors are very common
+to see. I have the same analysis by using SPSS before (at the middle of this quarter), 
+and when I using SPSS, I definitely messed myself when I combined those scores
+with different ranks. I need to check one by one in case I matched wrongly. However,
+R can automatically do this, and I can believe computer rather than myself, so I
+feel the fidelity of my analysis increases.
+
+And for reproducibility, I added customized functions this time, so it could definitely
+help me reuse those functions even if I am working on different dataset in the
+future. Also, for this current project, R comments and github can help me memeory what
+I did for each step, so reproducibility has been increased. Recall the SPSS thing,
+I need to memorize all steps by myself. And it is very easy to mix all things up.
+
+The last is efficiency. Following the memory things, when I used SPSS, if I didn't 
+do the whole work in the same day, it is very inefficient, because I need to almost
+re-do the whole work from the beginning becasue I lost where I were. However, when
+working with R, I think all my comments are useful, at least for myself, even if 
+I didn't work at the same day, I can recall quickly what happened last time. Also,
+a lot of functions in `r tidyverse` is helpful, that saves me much time.
+
+However, I think I still need to improve in the following fields. The first is how
+to make my codes more reader-friendly. Although currently I feel I can read anything
+easily, that doesn't mean others have the same feelings. So I need to make my codes
+more organized in the future, also with detailed comments, and use more for loop to 
+aviod repeated things. The second shortcoming is that I am still not very familiar with
+how to make my graphs beautiful and easy to deliver information. I think I need more
+practices on this part, after all practice is the best learning method. The last thing
+is not about the code, but more about my academy. I think I need to enhance the 
+underlying mechanisms and related literature about the project I am working with.
+Knowing more can help me be clearer with what kind of data I would expect, and which
+test I would apply. If I could have a clearer goal before I analyze my data, 
+I think it would be more efficient to write codes. 
+
+And last, thanks, John and Jake! I am really enjoyed in your teaching and tutorials!
+I learned a lot this quarter from both of you. And I hope both of you could have a 
+nice break and best wishes on everything!
+
+
+
+
+
+
+
+
+
